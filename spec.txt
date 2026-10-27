@@ -1,0 +1,67 @@
+Design Spec: tpt-praxis
+Repository: tpt-praxis (New)
+Priority: P0 — The Integration Boundary
+Status: Draft / Pending Implementation
+1. Context & Objective
+The TPT ecosystem contains world-class formal verification (tpt-eidos, tpt-solver), runtime policy engines (tpt-norma), execution boundaries (tpt-writ), state machines (tpt-workflow), and audit ledgers (tpt-concord). However, these are currently isolated libraries.
+tpt-praxis (from the Greek πρᾶξις, meaning "the enactment or realization of a theory") is the executable orchestration layer. Its objective is to wire these foundational crates into a single, unified, and secure execution endpoint. It is the "Proposer-Verifier-Executor-Audit" loop made real. It translates probabilistic AI proposals into deterministic, verified, and immutably audited real-world side effects.
+2. Target Users
+AI Agents (Primary Consumers): Autonomous systems, LLMs, and agentic workflows that need to interact with the real world (databases, APIs, hardware) via MCP, HTTP, or gRPC, but require strict safety guarantees.
+Domain Application Developers: Engineers building downstream applications (e.g., tpt-healthcare-nz, tpt-payments, tpt-flight-control) who need a drop-in, secure execution boundary without having to rewrite or deeply understand the formal verification logic.
+Auditors, Regulators, and Operators: Personnel who need a single, authoritative API to query the tpt-concord audit ledger, inspect policy decisions, and verify that the system operated within its formal bounds.
+3. Workspace & Crate Layout
+To maintain a clean separation between the orchestration logic, the network API, and the domain-specific hardware/database drivers, the repository will be structured as a Cargo workspace:
+Crate
+Responsibility
+tpt-praxis-core
+The pure orchestration logic. Contains the execute_protected_action loop, dependency injection traits, and the sequencing of tpt-norma -> tpt-writ -> tpt-concord.
+tpt-praxis-api
+The network server implementation. Exposes the unified endpoint via HTTP (axum), gRPC (tonic), or MCP. Handles routing, authentication, and request parsing.
+tpt-praxis-adapters
+Domain-specific implementations. Contains the actual database queries (e.g., Postgres/SQLite) to fetch StateSnapshots, and the drivers to execute the final side effects (e.g., sending an email, moving a motor).
+tpt-praxis-cli
+A command-line tool for local testing, inspecting the tpt-concord audit ledger, hot-reloading tpt-norma policies, and running adversarial tests via tpt-assurance-harness.
+4. Core Architecture & Flow
+tpt-praxis enforces a strict, non-bypassable sequence for every action. The core flow inside tpt-praxis-core is:
+Ingest & Validate: Receive the request. If via AI/MCP, ensure it was generated using tpt-local-ai constrained decoding to guarantee schema compliance. Parse into a CanonicalAction (tpt-uir).
+Fetch State: Query the current StateSnapshot and its StateVersion from the underlying data store (tpt-praxis-adapters).
+Policy Evaluation: Pass the CanonicalAction and StateSnapshot to tpt-norma.
+If Deny/Indeterminate: Halt, log to tpt-concord, return error.
+If Allow: Receive DecisionEvidence.
+Mint Permit: Pass the ActionDigest, StateVersion, and DecisionEvidence to tpt-writ to generate a single-use ExecutionPermit.
+Execute: Pass the ExecutionPermit and ActionRequest back to tpt-writ. tpt-writ verifies the permit, checks for TOCTOU state drift, and executes the side effect via tpt-praxis-adapters.
+Audit: Regardless of success or failure, append the complete lifecycle record to the tpt-concord tamper-evident ledger.
+5. Strict Invariants & Safety Guarantees
+As the integration boundary, tpt-praxis must enforce the following systemic invariants:
+The "No Free Lunch" Invariant: No side effect can occur in the system unless it has passed through the tpt-praxis-core orchestration loop. Direct database writes or hardware actuations by application code are strictly prohibited.
+Fail-Closed on Infrastructure Failure: If the database is unreachable, the audit ledger is full, or the policy engine times out, the endpoint must return an error. It must never default to allowing the action.
+Atomicity of the Audit Trail: The execution of the side effect and the appending of the audit record must be treated as a single logical transaction. If the audit record fails to append, the side effect must be rolled back (or flagged for immediate human intervention).
+Zero-Trust Internal Boundaries: Even though tpt-norma, tpt-writ, and tpt-praxis-core are in the same process, they must communicate via strict, typed interfaces. tpt-praxis-core cannot bypass tpt-writ's permit check by calling the adapter directly.
+6. Acceptance Tests (Definition of Done)
+The CI pipeline for tpt-praxis must include end-to-end integration tests that prove the orchestration works:
+Positive (Happy Path): A valid, constrained JSON request successfully passes through policy, execution, and audit, returning a 200 OK and a verifiable tpt-concord record.
+Negative (Policy Denial): A request that violates a tpt-norma constraint is blocked before reaching the execution adapter. The audit ledger records a Deny verdict.
+Negative (State Drift): A request is approved, but the state changes before execution. tpt-writ rejects the stale permit. The audit ledger records the rejection.
+Negative (Audit Failure): Simulate a full disk or locked database for the audit ledger. The endpoint must reject the action and roll back the side effect.
+Integration (MCP): An AI agent using the MCP protocol can successfully call a tool through tpt-praxis-api, and the resulting execution is fully traceable in the audit ledger.
+7. Dependencies & Contracts
+tpt-praxis is the ultimate consumer of the TPT ecosystem. Its Cargo.toml will heavily depend on the foundational libraries:
+Requires: tpt-uir (Canonical Action Envelope).
+Requires: tpt-norma (Policy Evaluation).
+Requires: tpt-writ (Execution Boundary & Permit Minting).
+Requires: tpt-workflow (If orchestrating multi-step state transitions).
+Requires: tpt-concord (Audit Ledger Appending).
+Requires: tpt-local-ai (For constrained decoding integration, if the API accepts raw LLM streams).
+Requires: tpt-primitives & tpt-crypto (Shared types and hashing).
+8. Solo Maintainer Strategy
+Because you are a solo maintainer, tpt-praxis is designed to be highly modular:
+Start Small: Initially, build tpt-praxis-core and a simple HTTP API (tpt-praxis-api) with an in-memory state adapter.
+Domain Swapping: When you need to deploy this for tpt-healthcare-nz, you simply write a new Postgres adapter in tpt-praxis-adapters and a new tpt-norma policy file. You do not need to rewrite the core orchestration logic.
+Leverage Existing Tests: Use tpt-av-test (tpt-assurance-harness) to fuzz the tpt-praxis-api endpoints, ensuring that malformed requests never crash the orchestration loop.
+Next Steps
+With tpt-praxis specified, you now have the complete blueprint for the deterministic AI ecosystem:
+The Theory: tpt-norma, tpt-writ, tpt-workflow, tpt-concord.
+The Input: tpt-local-ai (constrained decoding).
+The Proof: tpt-av-test (adversarial assurance).
+The Praxis: tpt-praxis (the unified execution gateway).
+You can now initialize the tpt-praxis repository, set up the Cargo workspace, and begin writing the tpt-praxis-core orchestration loop.

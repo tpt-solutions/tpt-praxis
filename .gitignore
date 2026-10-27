@@ -1,0 +1,29 @@
+# Rust build output
+/target/
+**/target/
+
+# Cargo lockfile is kept for the binary crates (tpt-praxis-api, tpt-praxis-cli)
+# so builds are reproducible. Remove this line if the workspace becomes library-only.
+# Cargo.lock is intentionally NOT ignored.
+
+# Backup files from some tools
+**/*.rs.bk
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local data, logs, and audit ledger output from local runs
+*.log
+/data/
+/ledger/
